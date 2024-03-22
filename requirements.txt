@@ -3,3 +3,5 @@ jinja2
 uvicorn
 openai
 ipykernel
+python-multipart
+ffmpeg-python

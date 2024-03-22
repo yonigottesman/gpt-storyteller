@@ -1,7 +1,10 @@
+import io
 import json
-import random
+import os
+import tempfile
 
-from fastapi import FastAPI, Request
+import ffmpeg
+from fastapi import FastAPI, File, Request, UploadFile
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from openai import AsyncOpenAI
@@ -11,109 +14,46 @@ app = FastAPI()
 
 templates = Jinja2Templates(directory="templates")
 
-# this list was generate by chatgpt
-topics = [
-    "Adventure",
-    "Pirates",
-    "Space exploration",
-    "Magic",
-    "Dragons",
-    "Superheroes",
-    "Time travel",
-    "Mystery",
-    "Dinosaurs",
-    "Robots",
-    "Underwater worlds",
-    "Wizards",
-    "Friendship",
-    "Treasure hunts",
-    "Ghost stories",
-    "Animal heroes",
-    "Fairy tales",
-    "Sports",
-    "Science fiction",
-    "Fantasy realms",
-    "Secret societies",
-    "Mythical creatures",
-    "Survival stories",
-    "Historical adventures",
-    "Alien encounters",
-    "School life",
-    "Jungle adventures",
-    "Arctic expeditions",
-    "Medieval quests",
-    "Vampire legends",
-    "Witchcraft",
-    "Parallel universes",
-    "Ninja warriors",
-    "Spy missions",
-    "Circus life",
-    "Zombie apocalypses",
-    "Lost civilizations",
-    "Eco adventures",
-    "Racing competitions",
-    "Haunted houses",
-    "Super villains",
-    "Secret agents",
-    "Monster hunters",
-    "Enchanted forests",
-    "Virtual reality",
-    "Inventors and inventions",
-    "Ancient myths",
-    "Desert islands",
-    "Space colonies",
-    "Magical kingdoms",
-    "Underdog stories",
-    "Detective cases",
-    "Wild West",
-    "Futuristic cities",
-    "Boarding schools",
-    "Animal kingdoms",
-    "Time capsules",
-    "Lost treasures",
-    "Cyber adventures",
-    "Dream worlds",
-    "Parallel dimensions",
-    "Super powers",
-    "Ancient Egypt",
-    "Knights and castles",
-    "Deep sea mysteries",
-    "Daring rescues",
-    "Hidden worlds",
-    "Extreme sports",
-    "Forbidden lands",
-    "Alien planets",
-    "Ancient Rome",
-    "Warrior princesses",
-    "Jungle tribes",
-    "Arctic mysteries",
-    "Mythical islands",
-    "Ghost towns",
-    "Musical adventures",
-    "Video game worlds",
-    "Space stations",
-    "Dragon riders",
-    "Lost temples",
-    "Magical artifacts",
-    "Soccer tournaments",
-    "Camping trips",
-    "Piano recitals",
-    "Dragon riders",
-]
 
 SYSTEM_PROMPT = "You make up cool and educational stories for children aged 7-16 in hebrew. "
-PROMPT = """make up a story in hebrew about 20-50 lines long. return a json with 'title' 'text' and 'questions'.
-the questions is a list of 5 questions on the story. all in hebrew.
-The topic should be any combination of one or more of the following: [{topic_1},{topic_2},{topic_3}]."""
 MODEL = "gpt-4-turbo-preview"
 
+USER_PREFIX_PROMPT = """ Here is the beginning or the main idea of a story in hebrew. You need to write/finish the story,
+make it about 20-50 lines long. return a json with 'title' and 'text'.
+text: {text}
+"""
 
-@app.get("/gen")
-async def gen():
 
-    chosen_topics = random.sample(topics, 3)
-    print(chosen_topics)
+async def get_text_from_audio(client: AsyncOpenAI, audio: UploadFile, language: str):
+
+    if audio.content_type == "audio/webm;codecs=opus":
+        data = await audio.read()
+        f = io.BytesIO(data)
+        f.name = "audio.webm"
+        whisper_output = await client.audio.transcriptions.create(model="whisper-1", file=f, language="he")
+    else:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mp4_input = os.path.join(tmpdir, audio.filename)
+            with open(mp4_input, "wb") as f:
+                f.write(await audio.read())
+            webm_output = os.path.join(tmpdir, "audio.webm")
+            ffmpeg.input(mp4_input).output(
+                webm_output,
+                **{"lossless": 1, "vcodec": "libvpx-vp9", "acodec": "libopus", "crf": 30, "b:v": 0, "b:a": "192k"},
+            ).run()
+
+            with open(webm_output, "rb") as f:
+                whisper_output = await client.audio.transcriptions.create(model="whisper-1", file=f, language="he")
+
+    print(f"whisper output: {whisper_output.text[:100]}")
+    return whisper_output
+
+
+@app.post("/audio/")
+async def audio(audioFile: UploadFile = File(...)):
     client = AsyncOpenAI()
+    text = await get_text_from_audio(client, audioFile, "he")
+
     response = await client.chat.completions.create(
         response_format={"type": "json_object"},
         model=MODEL,
@@ -121,12 +61,11 @@ async def gen():
             {"role": "system", "content": SYSTEM_PROMPT},
             {
                 "role": "user",
-                "content": PROMPT.format(topic_1=chosen_topics[0], topic_2=chosen_topics[1], topic_3=chosen_topics[2]),
+                "content": USER_PREFIX_PROMPT.format(text=text),
             },
         ],
     )
     story = json.loads(response.choices[0].message.content)
-    print(story["title"])
     dalle_response = await client.images.generate(
         model="dall-e-3",
         prompt=f"generate an image for this short story:\n{story['text']}",
@@ -137,7 +76,6 @@ async def gen():
     return {
         "text": story["text"],
         "title": story["title"],
-        "questions": story["questions"],
         "image_url": dalle_response.data[0].url,
     }
 

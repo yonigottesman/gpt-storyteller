@@ -19,7 +19,11 @@
         <header class="pb-3 mb-4 border-bottom">
             <span class="fs-4"></span>
         </header>
-        <button id="generateButton" class="btn btn-primary btn-lg" type="button">ספר סיפור</button>
+
+        <!-- Record and Stop buttons -->
+        <button id="recordButton" class="btn btn-danger btn-lg" type="button">הקלט</button>
+        <button id="stopButton" class="btn btn-secondary btn-lg" type="button" disabled>עצור</button>
+
         <div id="loader" class="spinner-border text-primary" role="status" style="display: none;">
             <span class="visually-hidden">Loading...</span>
         </div>
@@ -34,43 +38,58 @@
                     <p class="col-md-8 fs-4" id="story_text"></p>
                 </div>
             </div>
-            <div class="h-100 p-5 bg-light border rounded-3">
-                <h2>שאלות</h2>
-                <ul class="list-group" id="question_list">
-
-                </ul>
-            </div>
 
         </div>
-
         <script>
-            document.getElementById("generateButton").addEventListener("click", async () => {
-                // Show the spinner
-                document.getElementById("loader").style.display = '';
+            let mediaRecorder;
+            let audioChunks = [];
 
-                const response = await fetch("{{ url_for('gen') }}");
-                const data = await response.json();
+            document.getElementById("recordButton").addEventListener("click", async () => {
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    alert("Your browser does not support audio recording");
+                    return;
+                }
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                mediaRecorder.start();
 
+                mediaRecorder.ondataavailable = event => {
+                    audioChunks.push(event.data);
+                };
 
-                document.getElementById("loader").style.display = 'none';
-                document.getElementById("response_container").style.display = '';
-                document.getElementById("story_text").innerText = data.text;
-                document.getElementById("story_name").innerText = data.title;
-                document.getElementById("story_image").src = data.image_url;
+                document.getElementById("recordButton").disabled = true;
+                document.getElementById("stopButton").disabled = false;
+            });
 
-                const listGroup = document.getElementById('question_list');
-                listGroup.innerHTML = '';
-                data.questions.forEach(question => {
-                    const listItem = document.createElement('li');
-                    listItem.classList.add('list-group-item');
-                    listItem.textContent = question;
-                    listGroup.appendChild(listItem);
-                });
+            document.getElementById("stopButton").addEventListener("click", () => {
+                mediaRecorder.stop();
 
+                mediaRecorder.onstop = async () => {
+                    document.getElementById("loader").style.display = '';
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                    const formData = new FormData();
+                    formData.append("audioFile", audioBlob);
 
+                    const response = await fetch("{{ url_for('audio') }}", {
+                        method: 'POST',
+                        body: formData,
+                    });
+
+                    const responseData = await response.json();
+                    document.getElementById("loader").style.display = 'none';
+                    document.getElementById("response_container").style.display = '';
+                    document.getElementById("story_text").innerText = responseData.text;
+                    document.getElementById("story_name").innerText = responseData.title;
+                    document.getElementById("story_image").src = responseData.image_url;
+                    // console.log(responseData);
+
+                    // Reset for next recording
+                    audioChunks = [];
+                    document.getElementById("recordButton").disabled = false;
+                    document.getElementById("stopButton").disabled = true;
+                };
             });
         </script>
-
 
 
         <footer class="pt-3 mt-4 text-muted border-top">
