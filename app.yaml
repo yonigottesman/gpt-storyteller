@@ -1,13 +1,10 @@
-runtime: python39
+runtime: python
 service: story-teller
-entrypoint: uvicorn --port $PORT main:app
+
+entrypoint: gunicorn -b :$PORT -w 4 -k uvicorn.workers.UvicornWorker --forwarded-allow-ips="*" main:app
 
 env_variables:
   OPENAI_API_KEY:
-
-basic_scaling:
-  max_instances: 11
-  idle_timeout: 10m
 
 handlers:
   # This configures Google App Engine to serve the files in the app's static
@@ -20,3 +17,15 @@ handlers:
     # the entire handlers section) when there are no static files defined.
   - url: /.*
     script: auto
+
+env: flex
+
+runtime_config:
+  operating_system: ubuntu22
+  python_version: 3
+manual_scaling:
+  instances: 1
+resources:
+  cpu: 1
+  memory_gb: 0.5
+  disk_size_gb: 10

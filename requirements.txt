@@ -5,3 +5,5 @@ openai
 ipykernel
 python-multipart
 ffmpeg-python
+websockets
+gunicorn

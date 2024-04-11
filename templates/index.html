@@ -25,13 +25,19 @@
         <button id="stopButton" class="btn btn-secondary btn-lg" type="button" disabled>עצור</button>
 
         <div id="loader" class="spinner-border text-primary" role="status" style="display: none;">
-            <span class="visually-hidden">Loading...</span>
         </div>
         <br>
         <br>
         <br>
         <div class="container" id="response_container" style="display: none;">
-            <img src="" class="img-fluid" alt="..." id="story_image">
+            <div class="p-3 mb-4 bg-light rounded-3">
+                <div class="container-fluid py-0">
+                    <p class="col-md-8 fs-6" id="audio_text"></p>
+                </div>
+            </div>
+            <div class="d-flex justify-content-center mb-4">
+                <img src="" class="img-fluid" alt="" id="story_image">
+            </div>
             <div class="p-5 mb-4 bg-light rounded-3">
                 <div class="container-fluid py-5">
                     <h1 class="display-5 fw-bold" id="story_name"></h1>
@@ -43,7 +49,8 @@
         <script>
             let mediaRecorder;
             let audioChunks = [];
-
+            var ws = new WebSocket("{{ url_for('websocket_endpoint')}}");
+            var ws = new WebSocket(webSocketUri);
             document.getElementById("recordButton").addEventListener("click", async () => {
                 if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                     alert("Your browser does not support audio recording");
@@ -66,29 +73,40 @@
 
                 mediaRecorder.onstop = async () => {
                     document.getElementById("loader").style.display = '';
-                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-                    const formData = new FormData();
-                    formData.append("audioFile", audioBlob);
+                    const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
+                    ws.send(mediaRecorder.mimeType);
+                    ws.send(audioBlob);
 
-                    const response = await fetch("{{ url_for('audio') }}", {
-                        method: 'POST',
-                        body: formData,
-                    });
-
-                    const responseData = await response.json();
-                    document.getElementById("loader").style.display = 'none';
-                    document.getElementById("response_container").style.display = '';
-                    document.getElementById("story_text").innerText = responseData.text;
-                    document.getElementById("story_name").innerText = responseData.title;
-                    document.getElementById("story_image").src = responseData.image_url;
-                    // console.log(responseData);
-
-                    // Reset for next recording
                     audioChunks = [];
                     document.getElementById("recordButton").disabled = false;
                     document.getElementById("stopButton").disabled = true;
                 };
             });
+
+            ws.onmessage = function (event) {
+                var message = JSON.parse(event.data);  // Parse the JSON message
+                if (message.type === "audio_text") {
+                    document.getElementById("response_container").style.display = ''
+                    document.getElementById("story_name").innerText = ''
+                    document.getElementById("story_text").innerText = ''
+                    document.getElementById("story_image").src = ''
+
+                    var p = document.getElementById("audio_text");
+                    p.innerText = message.value;
+                } else if (message.type === "image") {
+                    document.getElementById("story_image").src = message.value;
+                } else if (message.type === "title") {
+                    var p = document.getElementById("story_name");
+                    p.innerText = message.value;
+                } else if (message.type === "text") {
+                    var p = document.getElementById("story_text");
+                    if (message.value) {
+                        p.innerText += message.value;
+                    }
+                } else if (message.type === "done") {
+                    document.getElementById("loader").style.display = 'none';
+                }
+            };
         </script>
 
 
