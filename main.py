@@ -16,13 +16,12 @@ app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
 
-SYSTEM_PROMPT = "You make up cool stories for children aged 7-16 in hebrew. "
-MODEL = "gpt-4-turbo-preview"
+SYSTEM_PROMPT = "You make up cool stories in hebrew"
+MODEL = "gpt-4o"
 
 
 @app.get("/", response_class=HTMLResponse)
 async def read_item(request: Request):
-    print(f"yonigo: {request.base_url}. {request.base_url.is_secure}")
     return templates.TemplateResponse(request=request, name="index.html")
 
 
@@ -117,7 +116,7 @@ async def speech2text(client: AsyncOpenAI, audio_data: bytes, mimetype: str):
 async def story_title_gist(client: AsyncOpenAI, audio_text: str):
     prompt = """
     here is a user request in hebrew for a short story. return a json with 'title' and 'snippet'.
-    the snippet should be about 30 words long and only contain the main idea of the story. It will be used to create an
+    the snippet should be about 30 words long and only contain the main idea and scenery of the story. It will be used to create an
     image of the story so should contain any visual aspects of the story.
     USER_REQUEST: {text}
     """

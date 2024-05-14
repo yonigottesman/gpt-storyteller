@@ -50,7 +50,6 @@
             let mediaRecorder;
             let audioChunks = [];
             var ws = new WebSocket("{{ url_for('websocket_endpoint')}}");
-            var ws = new WebSocket(webSocketUri);
             document.getElementById("recordButton").addEventListener("click", async () => {
                 if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                     alert("Your browser does not support audio recording");
